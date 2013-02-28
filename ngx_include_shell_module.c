@@ -5,6 +5,8 @@
 
 #include <ngx_core.h>
 #include <stdio.h>
+#include <unistd.h>
+#include <sys/param.h>
 
 char *ngx_include_shell(ngx_conf_t *cf, ngx_command_t *cmd, void *conf);
 
@@ -39,43 +41,61 @@ ngx_include_shell(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
 {
     ngx_str_t *v=cf->args->elts;
     size_t n,w;
-    char buff[1024];
+    char buff[1024],cwd[MAXPATHLEN],*nwd,*p;
+    FILE *in,*out;
+    int e=1,h;
 
-    FILE *in=popen((char *)v[2].data,"r");
-    if(!in){
-        ngx_conf_log_error(NGX_LOG_EMERG,cf,errno,"popen() \"%s\" failed",v[2].data);
+    p=getcwd(cwd,sizeof(cwd));
+    if(!p){
+        ngx_conf_log_error(NGX_LOG_EMERG,cf,errno,"getcwd() failed - errno %d",errno);
         return NGX_CONF_ERROR;
     }
 
-    FILE *out=fopen((char *)v[1].data,"w");
-    if(!out){
-        pclose(in);
-        ngx_conf_log_error(NGX_LOG_EMERG,cf,errno,"fopen() \"%s\" failed",v[1].data);
+    nwd=strndup((char *)cf->conf_file->file.name.data,(size_t)cf->conf_file->file.name.len);
+    p=strrchr(nwd,'/');
+    if(p) *p=0;
+
+    h=chdir(nwd);
+    free(nwd);
+    if(h<0){
+        ngx_conf_log_error(NGX_LOG_EMERG,cf,errno,"chdir() failed - errno %d",errno);
         return NGX_CONF_ERROR;
+    }
+
+    in=popen((char *)v[2].data,"r");
+    if(!in){
+        ngx_conf_log_error(NGX_LOG_EMERG,cf,errno,"popen() \"%s\" failed",v[2].data);
+        goto end;
+    }
+
+    out=fopen((char *)v[1].data,"w");
+    if(!out){
+        ngx_conf_log_error(NGX_LOG_EMERG,cf,errno,"fopen() \"%s\" failed",v[1].data);
+        goto end;
     }
 
     while(1){
         n=fread(buff,1,sizeof(buff),in);
         if(n<sizeof(buff) && ferror(in)){
             ngx_conf_log_error(NGX_LOG_EMERG,cf,errno,"fread() \"%s\" failed",v[2].data);
-            fclose(out);
-            pclose(in);
-            return NGX_CONF_ERROR;
+            goto end;
         }
         if(n>0){
             w=fwrite(buff,1,n,out);
             if(w<n && ferror(out)){
                 ngx_conf_log_error(NGX_LOG_EMERG,cf,errno,"fwrite() \"%s\" failed",v[1].data);
-                fclose(out);
-                pclose(in);
-                return NGX_CONF_ERROR;
+                goto end;
             }
         }
 
         if(feof(in)) break;
     }
-    fclose(out);
-    pclose(in);
+    e=0;
+
+end:
+    if(out) fclose(out);
+    if(in) pclose(in);
+    if(chdir(cwd)<0 || e) return NGX_CONF_ERROR;
 
     return ngx_conf_parse(cf,&v[1]);
 }
