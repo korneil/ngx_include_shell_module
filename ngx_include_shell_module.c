@@ -42,7 +42,7 @@ ngx_include_shell(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
     ngx_str_t *v=cf->args->elts;
     size_t n,w;
     char buff[1024],cwd[MAXPATHLEN],*nwd,*p;
-    FILE *in,*out;
+    FILE *in,*out=0;
     int e=1,h;
 
     p=getcwd(cwd,sizeof(cwd));
