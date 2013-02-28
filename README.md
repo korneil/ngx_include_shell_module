@@ -10,6 +10,8 @@ Put include_shell directive to nginx.conf:
 
 include_shell [path_to_file_where_the_output_will_be_generated] [program_to_execute];
 
+[program_to_execute]'s cwd will be the directory of the config file where include_shell is set.
+
 **Example:**
 
 include_shell /tmp/tmp-nginx.conf "/bin/echo root /var/www\;";
